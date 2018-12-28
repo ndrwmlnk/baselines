@@ -13,13 +13,16 @@ from baselines.her.rollout import RolloutWorker
 @click.option('--seed', type=int, default=0)
 @click.option('--n_test_rollouts', type=int, default=10)
 @click.option('--render', type=int, default=1)
-def main(policy_file, seed, n_test_rollouts, render):
+@click.option('--env_name_param', type=str, default='')
+def main(policy_file, seed, n_test_rollouts, render, env_name_param):
     set_global_seeds(seed)
 
     # Load policy.
     with open(policy_file, 'rb') as f:
         policy = pickle.load(f)
     env_name = policy.info['env_name']
+    if len(env_name_param) > 0:
+        env_name = env_name_param
 
     # Prepare params.
     params = config.DEFAULT_PARAMS
