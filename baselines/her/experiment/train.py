@@ -1,6 +1,6 @@
 import os
 import sys
-
+from datetime import datetime
 import click
 import numpy as np
 import json
@@ -60,7 +60,7 @@ def train(policy, rollout_worker, evaluator,
             logger.record_tabular(key, mpi_average(val))
         for key, val in policy.logs():
             logger.record_tabular(key, mpi_average(val))
-
+        logger.record_tabular('time', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         if rank == 0:
             logger.dump_tabular()
 
@@ -177,12 +177,12 @@ def launch(
 
 
 @click.command()
-@click.option('--env', type=str, default='FetchReach-v1', help='the name of the OpenAI Gym environment that you want to train on')
-@click.option('--logdir', type=str, default=None, help='the path to where logs and policy pickles should go. If not specified, creates a folder in /tmp/')
-@click.option('--n_epochs', type=int, default=50, help='the number of training epochs to run')
+@click.option('--env', type=str, default='HandManipulateBlockTouchSensors-v0', help='the name of the OpenAI Gym environment that you want to train on')  # HandManipulateBlock-v0  # FetchReach-v1  # https://github.com/openai/gym/blob/master/gym/envs/__init__.py
+@click.option('--logdir', type=str, default='logdir', help='the path to where logs and policy pickles should go. If not specified, creates a folder in /tmp/')
+@click.option('--n_epochs', type=int, default=2000, help='the number of training epochs to run')
 @click.option('--num_cpu', type=int, default=1, help='the number of CPU cores to use (using MPI)')
-@click.option('--seed', type=int, default=0, help='the random seed used to seed both the environment and the training code')
-@click.option('--policy_save_interval', type=int, default=5, help='the interval with which policy pickles are saved. If set to 0, only the best and latest policy will be pickled.')
+@click.option('--seed', type=int, default=42, help='the random seed used to seed both the environment and the training code')
+@click.option('--policy_save_interval', type=int, default=0, help='the interval with which policy pickles are saved. If set to 0, only the best and latest policy will be pickled.')
 @click.option('--replay_strategy', type=click.Choice(['future', 'none']), default='future', help='the HER replay strategy to be used. "future" uses HER, "none" disables HER.')
 @click.option('--clip_return', type=int, default=1, help='whether or not returns should be clipped')
 @click.option('--demo_file', type=str, default = 'PATH/TO/DEMO/DATA/FILE.npz', help='demo data file path')

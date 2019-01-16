@@ -37,6 +37,7 @@ class RolloutWorker:
         self.info_keys = [key.replace('info_', '') for key in dims.keys() if key.startswith('info_')]
 
         self.success_history = deque(maxlen=history_len)
+        self.success_any_history = deque(maxlen=history_len)
         self.Q_history = deque(maxlen=history_len)
 
         self.n_episodes = 0
@@ -143,6 +144,12 @@ class RolloutWorker:
         assert successful.shape == (self.rollout_batch_size,)
         success_rate = np.mean(successful)
         self.success_history.append(success_rate)
+
+        successful_any = np.array(successes).max(0)
+        assert successful_any.shape == (self.rollout_batch_size,)
+        success_rate = np.mean(successful_any)
+        self.success_any_history.append(success_rate)
+
         if self.compute_Q:
             self.Q_history.append(np.mean(Qs))
         self.n_episodes += self.rollout_batch_size
@@ -153,6 +160,7 @@ class RolloutWorker:
         """Clears all histories that are used for statistics
         """
         self.success_history.clear()
+        self.success_any_history.clear()
         self.Q_history.clear()
 
     def current_success_rate(self):
@@ -172,6 +180,7 @@ class RolloutWorker:
         """
         logs = []
         logs += [('success_rate', np.mean(self.success_history))]
+        logs += [('success_any_rate', np.mean(self.success_any_history))]
         if self.compute_Q:
             logs += [('mean_Q', np.mean(self.Q_history))]
         logs += [('episode', self.n_episodes)]
