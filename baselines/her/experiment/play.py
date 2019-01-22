@@ -9,7 +9,7 @@ from baselines.her.rollout import RolloutWorker
 
 
 @click.command()
-@click.argument('policy_file', type=str)
+@click.argument('policy_file', type=str, default='../../../HandManipulateBlockTouchSensors/policy_best.pkl')
 @click.option('--seed', type=int, default=0)
 @click.option('--n_test_rollouts', type=int, default=10)
 @click.option('--render', type=int, default=1)

@@ -6,6 +6,11 @@ from mujoco_py import MujocoException
 
 from baselines.her.util import convert_episode_to_batch_major, store_args
 
+import pickle, os, gzip
+import numpy as np
+from pyquaternion import Quaternion
+from time import gmtime, strftime
+
 
 class RolloutWorker:
 
@@ -47,6 +52,50 @@ class RolloutWorker:
         self.reset_all_rollouts()
         self.clear_history()
 
+    ### ndrw touch start ####################################
+    def generate_cloud(self, size=11, dimension=1.0):
+        # generates point cloud with center 0,0,0
+        pts = []
+        for i in np.linspace(-dimension, dimension, size):
+            for j in np.linspace(-dimension, dimension, size):
+                for k in np.linspace(-dimension, dimension, size):
+                    if abs(i) == dimension or abs(j) == dimension or abs(k) == dimension:
+                        pts.append(np.array([i, j, k]))
+        return pts
+
+
+    def transform_cloud(self, point_cloud, quaternion, cube_position=[0.0, 0.0, 0.0]):
+        pts_transformed = []
+        for pt in point_cloud:
+            pts_transformed.append(quaternion.rotate(pt) + cube_position)
+        return pts_transformed
+
+
+    def find_scaling(self, cloud_transformed, voxel_range):
+        max_dimension = max(list(map(lambda x: max(x), cloud_transformed)))
+        # print("find_scaling: return = ", voxel_range / max_dimension)
+        return voxel_range / max_dimension
+
+
+    def cloud2voxel(self, cloud, voxel_range, size=16, shift=[0, 0, 0]):
+        # convert to voxel grid
+        size05 = (size - 1) / 2
+        voxels = np.zeros((size, size, size), dtype=np.uint8)
+        pos_center = (size05, size05, size05)
+        for pt in cloud:
+            i, j, k = np.round(pt * size05 / voxel_range + pos_center).astype('int')
+            # print(pt * size05 / voxel_range + pos_center, i, j, k)  # debugging
+            i += shift[0]
+            j += shift[1]
+            k += shift[2]
+            if i < size and j < size and k < size and i >= 0 and j >= 0 and k >= 0:
+                voxels[int(i)][int(j)][int(k)] = 1
+            else:
+                print(i, j, k)
+                quit()
+        return voxels
+    ### ndrw touch end ########################################
+
     def reset_rollout(self, i):
         """Resets the `i`-th rollout environment, re-samples a new goal, and updates the `initial_o`
         and `g` arrays accordingly.
@@ -56,11 +105,13 @@ class RolloutWorker:
         self.initial_ag[i] = obs['achieved_goal']
         self.g[i] = obs['desired_goal']
 
+
     def reset_all_rollouts(self):
         """Resets all `rollout_batch_size` rollout workers.
         """
         for i in range(self.rollout_batch_size):
             self.reset_rollout(i)
+
 
     def generate_rollouts(self):
         """Performs `rollout_batch_size` rollouts in parallel for time horizon `T` with the current
@@ -78,6 +129,17 @@ class RolloutWorker:
         obs, achieved_goals, acts, goals, successes = [], [], [], [], []
         info_values = [np.empty((self.T, self.rollout_batch_size, self.dims['info_' + key]), np.float32) for key in self.info_keys]
         Qs = []
+
+        ### ndrw touch start ##################
+        quaternions = []
+        cloudShapes = []
+        voxelShapes = []
+        voxelSpaceSize = 16
+        voxelRange = 2.0
+        dimension = 1.0
+        cloud = self.generate_cloud(size=voxelSpaceSize, dimension=dimension)
+        ### ndrw touch end ##########################
+
         for t in range(self.T):
             policy_output = self.policy.get_actions(
                 o, ag, self.g,
@@ -136,6 +198,26 @@ class RolloutWorker:
                        u=acts,
                        g=goals,
                        ag=achieved_goals)
+        ### ndrw touch start ##################
+        for i in range(len(obs)):
+            quat = Quaternion(obs[i][0][-4:])
+            if i % 25 == 0: print(strftime("%H%M%S", gmtime()), '\t', i, '\t', quat)
+            cloud_transformed = self.transform_cloud(cloud.copy(), quat)
+            voxels = self.cloud2voxel(cloud_transformed, voxelRange, size=voxelSpaceSize)
+            voxelShapes.append(voxels)
+
+        senses = dict(sens_proprio=[ob[0][:24] for ob in obs],
+                      sens_touch=[ob[0][54:-7] for ob in obs],
+                      sens_pos_quat=[ob[0][-7:] for ob in obs],
+                      sens_voxel=voxelShapes
+        )
+        folder_md = '../../../HandManipulateBlockTouchSensors_multisensory_data/'
+        if not os.path.exists(folder_md):
+            os.makedirs(folder_md)
+        with gzip.GzipFile(folder_md + 'multisensory_data_ep_' + strftime("%H%M%S", gmtime()) + '.pgz', 'w') as f:
+            pickle.dump(senses, f)
+        ### ndrw touch end ##########################
+
         for key, value in zip(self.info_keys, info_values):
             episode['info_{}'.format(key)] = value
 
